@@ -1,4 +1,4 @@
-discord-interactions
+discord-continued
 ====================
 
 **A simple API wrapper for Discord interactions.**

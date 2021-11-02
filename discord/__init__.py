@@ -1,8 +1,8 @@
 """
-discord-interactions
+discord-continued
 
-A simple API wrapper for Discord interactions.
-(c) 2021 goverfl0w.
+An API wrapper for Discord.
+(c) 2021 sakurazaki.
 """
 from .api import *  # noqa: F401 F403
 from .base import *  # noqa: F401 F403
