@@ -5,8 +5,8 @@ This pull request does (insert here), which effectively solves issues (X) and (Y
 ## Checklist
 
 - [ ] I've run the `pre_push.py` script to format and lint the change(s) made.
-- [ ] I've checked to make sure this pull request runs on Python `3.6.X`.
-- [ ] This fixes/solves something from the project's [Issues](https://github.com/goverfl0w/discord-interactions/issues).
+- [ ] I've checked to make sure this pull request runs on Python `3.7.X`.
+- [ ] This fixes/solves something from the project's [Issues](https://github.com/sakurazaki/discord-continued/issues).
     - Issue (if referenceable):
 - [ ] This adds something new.
     - [ ] This is not a code change.
