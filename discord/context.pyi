@@ -24,6 +24,7 @@ class InteractionContext(Context):
     __slots__ = (
         "id",
         "application_id",
+        "name",
         "type",
         "data",
         "guild_id",
@@ -33,6 +34,7 @@ class InteractionContext(Context):
     )
     id: str
     application_id: str
+    name: str
     type: Union[str, int, InteractionType]
     data: InteractionData
     guild_id: str

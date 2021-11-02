@@ -2,7 +2,7 @@ import asyncio
 import signal
 import aiohttp
 from logging import Logger, basicConfig, getLogger
-from typing import Any, Callable, Coroutine, List, Optional, Union
+from typing import Any, Callable, Coroutine, List, Optional, Union, Dict
 
 from .api.cache import Cache, Item
 from .api.error import InteractionException, JSONException
@@ -16,6 +16,7 @@ from .base import Data
 from .backoff import ExponentialBackoff
 from .enums import ApplicationCommandType
 from .models.command import ApplicationCommand, Option
+from .context import InteractionContext
 
 __all__ = (
     'Client',
@@ -59,6 +60,22 @@ def _cleanup_loop(loop: asyncio.AbstractEventLoop) -> None:
         log.info('Closing the event loop.')
         loop.close()
 
+class _ClientEventTask(asyncio.Task):
+    def __init__(self, original_coro, event_name, coro, *, loop):
+        super().__init__(coro, loop=loop)
+        self.__event_name = event_name
+        self.__original_coro = original_coro
+
+    def __repr__(self):
+        info = [
+            ('state', self._state.lower()),
+            ('event', self.__event_name),
+            ('coro', repr(self.__original_coro)),
+        ]
+        if self._exception is not None:
+            info.append(('exception', repr(self._exception)))
+        return '<ClientEventTask {}>'.format(' '.join('%s=%s' % t for t in info))
+
 class Client:
     """
     A class representing the client connection to Discord's gateway and API via. WebSocket and HTTP.
@@ -87,6 +104,8 @@ class Client:
         self._hooks = {
             'before_identify': self._call_before_identify_hook
         }
+
+        self._application_commands: Dict[str, Dict] = {}
 
         self._closed = False
         self._ready = asyncio.Event()
@@ -127,7 +146,7 @@ class Client:
         """
 
         log.info('logging in using static token')
-        await self.http.static_login(token.strip(), bot=bot)
+        self.me = await self.http.static_login(token.strip(), bot=bot)
 
     async def connect(self, *, reconnect=True):
         """|coro|
@@ -352,20 +371,39 @@ class Client:
     def _get_websocket(self, guild_id=None, *, shard_id=None):
         return self.ws
 
-    def _get_state(self, **options):
-        return ConnectionState(dispatch=self.dispatch, handlers=self._handlers,
-                               hooks=self._hooks, syncer=self._syncer, http=self.http, loop=self.loop, **options)
-
     async def _syncer(self, guilds):
         await self.ws.request_sync(guilds)
 
-    def _handle_ready(self):
+    def _handle_ready(self, _):
         self._ready.set()
+        log.debug(f"Im Handling ready and setting up {self._application_commands}")
+        # Dispatch all pending application_commands
+        for name, data in self._application_commands.items():
+            self._setup_application_command(name, self.me['id'], data)
+        asyncio.create_task(self.synchronize_commands())
 
-    def dispatch(self, event, *args, **kwargs):
+    def dispatch_raw(self, event, *args, **kwargs):
         method = 'on_' + event
 
+        try:
+            coro = getattr(self, method)
+        except AttributeError:
+            pass
+        else:
+            self._schedule_event(coro, method, app_context)
+
+    def dispatch(self, event, data: dict = None):
+        method = 'on_' + event
+
+        app_context = None
+        if data:
+            app_context = InteractionContext(**data)
+
+        if event in self._handlers:
+            self._handlers[event](app_context)
+
         listeners = self._listeners.get(event)
+        print(listeners, event)
         if listeners:
             removed = []
             for i, (future, condition) in enumerate(listeners):
@@ -374,18 +412,16 @@ class Client:
                     continue
 
                 try:
-                    result = condition(*args)
+                    result = condition(app_context)
                 except Exception as exc:
                     future.set_exception(exc)
                     removed.append(i)
                 else:
                     if result:
-                        if len(args) == 0:
-                            future.set_result(None)
-                        elif len(args) == 1:
-                            future.set_result(args[0])
+                        if app_context:
+                            future.set_result(app_context)
                         else:
-                            future.set_result(args)
+                            future.set_result(None)
                         removed.append(i)
 
             if len(removed) == len(listeners):
@@ -399,7 +435,19 @@ class Client:
         except AttributeError:
             pass
         else:
-            self._schedule_event(coro, method, *args, **kwargs)
+            self._schedule_event(coro, method, app_context)
+
+    def dispatch_interaction(self, data):
+        app_context = InteractionContext(**data)
+
+        coro = getattr(self, f"{app_context.data['name']}_{app_context.data['type']}", None)
+        if coro:
+            asyncio.create_task(coro(app_context))
+
+    def _schedule_event(self, coro, event_name, app_context):
+        wrapped = self._run_event(coro, event_name, app_context)
+        # Schedules the task
+        return _ClientEventTask(original_coro=coro, event_name=event_name, coro=wrapped, loop=self.loop)
 
     @property
     def latency(self):
@@ -422,52 +470,18 @@ class Client:
             return self.ws.is_ratelimited()
         return False
 
-    @property
-    def user(self):
-        """Optional[:class:`.ClientUser`]: Represents the connected client. ``None`` if not logged in."""
-        return self._connection.user
-
-    @property
-    def guilds(self):
-        """List[:class:`.Guild`]: The guilds that the connected client is a member of."""
-        return self._connection.guilds
-
-    @property
-    def emojis(self):
-        """List[:class:`.Emoji`]: The emojis that the connected client has."""
-        return self._connection.emojis
-
-    @property
-    def cached_messages(self):
-        """Sequence[:class:`.Message`]: Read-only list of messages the connected client has cached.
-
-        .. versionadded:: 1.1
-        """
-        return utils.SequenceProxy(self._connection._messages or [])
-
-    @property
-    def private_channels(self):
-        """List[:class:`.abc.PrivateChannel`]: The private channels that the connected client is participating on.
-
-        .. note::
-
-            This returns only up to 128 most recent private channels due to an internal working
-            on how Discord deals with private channels.
-        """
-        return self._connection.private_channels
-
     def is_ready(self):
         """:class:`bool`: Specifies if the client's internal cache is ready for use."""
         return self._ready.is_set()
 
-    async def _run_event(self, coro, event_name, *args, **kwargs):
+    async def _run_event(self, coro, event_name, app_context):
         try:
-            await coro(*args, **kwargs)
+            await coro(app_context)
         except asyncio.CancelledError:
             pass
         except Exception:
             try:
-                await self.on_error(event_name, *args, **kwargs)
+                await self.on_error(event_name, app_context)
             except asyncio.CancelledError:
                 pass
 
@@ -477,41 +491,67 @@ class Client:
         """:class:`bool`: Indicates if the websocket connection is closed."""
         return self._closed
 
-    def synchronize_commands(self, name: Optional[str] = None) -> None:
-        # TODO: Doctype what this does.
-        commands = self.loop.run_until_complete(self.http.get_application_command(self.me.id))
-        change: list = []
+    async def synchronize_commands(self, name: Optional[str] = None) -> None:
+        await asyncio.sleep(2) # we're getting rate limited here so wait a bit, we're in no rush
+        guilds = await self.http.get_self_guilds()
 
-        for command in commands:
-            _command: Optional[Item] = cache.interactions.get(command["id"])
-            if _command:
-                if ApplicationCommand(**command) == _command:
-                    log.warning(f"Detected change to command ID {command.id}.")
-                    change.append(command)
-            else:
-                cache.interactions.add(Item(command["id"], ApplicationCommand(**command)))
+        for guild in guilds:
+            await asyncio.sleep(2)
+            commands = await self.http.get_application_command(self.me['id'], guild['id'])
+            
+            change: list = []
 
-        for command in change:
-            log.debug(f"Updated command {command.id}.")
-            self.http.edit_application_command(
-                application_id=self.me.id,
-                data=command["data"],
-                command_id=command["id"],
-                guild_id=command.get("guild_id"),
-            )
-            cache.interactions.add(Item(command["id"], ApplicationCommand(**command)))
+            for command in commands:
+                _command: Optional[Item] = getattr(self, f"{command['name']}_{command['type']}", None)
+                return
+                if _command:
+                    change.append(_command)
+                else:
+                    await asyncio.sleep(3)
+                    await self.http.delete_application_command(
+                        application_id=self.me['id'],
+                        command_id=command["id"],
+                        guild_id=command.get("guild_id"),
+                    )
+
+            for command in change:
+                log.debug(f"Updated command {command['id']}.")
+                await asyncio.sleep(3)
+                self.http.edit_application_command(
+                    application_id=self.me['id'],
+                    data=command["data"],
+                    command_id=command["id"],
+                    guild_id=command.get("guild_id"),
+                )
 
     def event(self, coro: Coroutine) -> Callable[..., Any]:
-        """
-        A decorator for listening to dispatched events from the
-        gateway.
+        """A decorator that registers an event to listen to.
 
-        :return: typing.Callable[..., typing.Any]
+        You can find more info about the events on the :ref:`documentation below <discord-api-events>`.
+
+        The events must be a :ref:`coroutine <coroutine>`, if not, :exc:`TypeError` is raised.
+
+        Example
+        ---------
+
+        .. code-block:: python3
+
+            @client.event
+            async def on_ready():
+                print('Ready!')
+
+        Raises
+        --------
+        TypeError
+            The coroutine passed is not actually a coroutine.
         """
-        #self.ws.dispatch.register(
-        #    coro, name=coro.__name__ if coro.__name__.startswith("on") else "on_interaction_create"
-        #)
-        #return coro
+
+        if not asyncio.iscoroutinefunction(coro):
+            raise TypeError('event registered must be a coroutine function')
+
+        setattr(self, coro.__name__, coro)
+        log.debug('%s has successfully been registered as an event', coro.__name__)
+        return coro
 
     def command(
         self,
@@ -522,7 +562,6 @@ class Client:
         scope: Optional[Union[int, Guild, List[int], List[Guild]]] = None,
         options: Optional[List[Option]] = None,
         default_permission: Optional[bool] = None
-        # permissions: Optional[List[Permission]] = None,
     ) -> Callable[..., Any]:
         """
         A decorator for registering an application command to the Discord API,
@@ -543,58 +582,59 @@ class Client:
         :type default_permission: typing.Optional[bool]
         :return: typing.Callable[..., typing.Any]
         """
+
         if not name:
             raise Exception("Command must have a name!")
 
         if name and (type != 3 and not description):
             raise Exception("Chat-input commands must have a description!")
 
-        def decorator(coro: Coroutine) -> Any:
-            if "ctx" not in coro.__code__.co_varnames:
-                raise InteractionException(11)
+        def decorator(coro: Coroutine):
+            if not asyncio.iscoroutinefunction(coro):
+                raise TypeError('event registered must be a coroutine function')
 
-            _description: str = "" if description is None else description
-            _options: list = [] if options is None else options
-            _default_permission: bool = True if default_permission is None else default_permission
-            # _permissions: list = [] if permissions is None else permissions
-            _scope: list = []
+            # What we're going to do here is take the function and push it back until we're logged in.
+            # Once we're logged in we get all bot information and register the functions.
 
-            if isinstance(scope, list):
-                if all(isinstance(x, Guild) for x in scope):
-                    _scope.append(guild.id for guild in scope)
-                elif all(isinstance(x, int) for x in scope):
-                    _scope.append(guild for guild in scope)
-            else:
-                _scope.append(scope)
-
-            for guild in _scope:
-                payload: ApplicationCommand = ApplicationCommand(
-                    type=type.value if isinstance(type, ApplicationCommandType) else type,
-                    name=name,
-                    description=_description,
-                    options=_options,
-                    default_permission=_default_permission,
-                )
-
-                request = self.loop.run_until_complete(
-                    self.http.create_application_command(
-                        self.me.id, data=payload._json, guild_id=guild
-                    )
-                )
-
-                if request.get("code"):
-                    raise JSONException(request["code"])  # TODO: work on this pls
-
-                for interaction in cache.interactions.values:
-                    if interaction.values[interaction].value.name == name:
-                        self.synchronize_commands(name)
-                        # TODO: make a call to our internal sync method instead of an exception.
-                    else:
-                        cache.interactions.add(Item(id=request["application_id"], value=payload))
-
-            return self.event(coro)
+            setattr(self, f"{name}_{type}", coro)
+            self._application_commands[f"{name}_{type}"] = \
+            {'type': type, 'name': name, 'description': description, 'scope': scope, 
+                'options': options, 'default_permission': default_permission}
+            log.debug('%s has successfully been registered as an application command', coro.__name__)
+            return coro
 
         return decorator
+
+    def _setup_application_command(self, name: str, application_id: int, application_data: dict):
+        _type: int = application_data["type"].value if isinstance(application_data["type"], ApplicationCommandType) else application_data["type"]
+        _description: str = "" if application_data.get("description") is None else application_data["description"]
+        _options: list = [] if application_data.get("options") is None else application_data["options"]
+        _default_permission: bool = True if application_data.get("default_permission") is None else application_data["default_permission"]
+        # _permissions: list = [] if permissions is None else permissions
+        _scope: list = []
+
+        if isinstance(application_data.get("description"), list):
+            if all(isinstance(x, Guild) for x in scope):
+                _scope.append(guild.id for guild in scope)
+            elif all(isinstance(x, int) for x in scope):
+                _scope.append(guild for guild in scope)
+        else:
+            _scope.append(application_data.get("scope"))
+
+        for guild in _scope:
+            payload: ApplicationCommand = ApplicationCommand(
+                type=_type,
+                name=application_data['name'],
+                description=_description,
+                options=_options,
+                default_permission=_default_permission,
+            )
+
+            request = self.http.create_application_command(
+                application_id=application_id, data=payload._json, guild_id=guild
+            )
+
+            asyncio.create_task(request)
 
     async def raw_socket_create(self, data: dict) -> None:
         # TODO: doctype what this does
@@ -607,3 +647,101 @@ class Client:
         :return: None.
         """
         cache.guilds.add(Item(id=guild.id, value=guild))
+
+    def wait_for(self, event, *, check=None, timeout=None):
+        """|coro|
+
+        Waits for a WebSocket event to be dispatched.
+
+        This could be used to wait for a user to reply to a message,
+        or to react to a message, or to edit a message in a self-contained
+        way.
+
+        The ``timeout`` parameter is passed onto :func:`asyncio.wait_for`. By default,
+        it does not timeout. Note that this does propagate the
+        :exc:`asyncio.TimeoutError` for you in case of timeout and is provided for
+        ease of use.
+
+        In case the event returns multiple arguments, a :class:`tuple` containing those
+        arguments is returned instead. Please check the
+        :ref:`documentation <discord-api-events>` for a list of events and their
+        parameters.
+
+        This function returns the **first event that meets the requirements**.
+
+        Examples
+        ---------
+
+        Waiting for a user reply: ::
+
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$greet'):
+                    channel = message.channel
+                    await channel.send('Say hello!')
+
+                    def check(m):
+                        return m.content == 'hello' and m.channel == channel
+
+                    msg = await client.wait_for('message', check=check)
+                    await channel.send('Hello {.author}!'.format(msg))
+
+        Waiting for a thumbs up reaction from the message author: ::
+
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$thumb'):
+                    channel = message.channel
+                    await channel.send('Send me that \N{THUMBS UP SIGN} reaction, mate')
+
+                    def check(reaction, user):
+                        return user == message.author and str(reaction.emoji) == '\N{THUMBS UP SIGN}'
+
+                    try:
+                        reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
+                    except asyncio.TimeoutError:
+                        await channel.send('\N{THUMBS DOWN SIGN}')
+                    else:
+                        await channel.send('\N{THUMBS UP SIGN}')
+
+
+        Parameters
+        ------------
+        event: :class:`str`
+            The event name, similar to the :ref:`event reference <discord-api-events>`,
+            but without the ``on_`` prefix, to wait for.
+        check: Optional[Callable[..., :class:`bool`]]
+            A predicate to check what to wait for. The arguments must meet the
+            parameters of the event being waited for.
+        timeout: Optional[:class:`float`]
+            The number of seconds to wait before timing out and raising
+            :exc:`asyncio.TimeoutError`.
+
+        Raises
+        -------
+        asyncio.TimeoutError
+            If a timeout is provided and it was reached.
+
+        Returns
+        --------
+        Any
+            Returns no arguments, a single argument, or a :class:`tuple` of multiple
+            arguments that mirrors the parameters passed in the
+            :ref:`event reference <discord-api-events>`.
+        """
+
+        future = self.loop.create_future()
+        if check is None:
+            def _check(*args):
+                return True
+            check = _check
+
+        ev = event.lower()
+        try:
+            listeners = self._listeners[ev]
+        except KeyError:
+            listeners = []
+            self._listeners[ev] = listeners
+
+        listeners.append((future, check))
+        return asyncio.wait_for(future, timeout)

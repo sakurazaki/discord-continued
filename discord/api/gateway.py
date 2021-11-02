@@ -235,6 +235,8 @@ class DiscordWebSocket:
         # dynamically add attributes needed
         ws.token = client.http.token
         ws._dispatch = client.dispatch
+        ws._dispatch_raw = client.dispatch_raw
+        ws._dispatch_interaction = client.dispatch_interaction
         ws.gateway = gateway
         ws._initial_identify = initial
         ws.shard_id = shard_id
@@ -336,7 +338,7 @@ class DiscordWebSocket:
         log.debug('For Shard ID %s: WebSocket Event: %s', self.shard_id, msg)
         event = msg.get('t')
         if event:
-            self._dispatch('socket_event_type', event)
+            self._dispatch_raw('socket_event_type', event)
 
         op = msg.get('op')
         data = msg.get('d')
@@ -373,6 +375,7 @@ class DiscordWebSocket:
                 # send a heartbeat immediately
                 await self.send_as_json(self._keep_alive.get_payload())
                 self._keep_alive.start()
+                self._dispatch('ready')
                 return
 
             if op == OpCodeType.INVALIDATE_SESSION:
@@ -405,12 +408,29 @@ class DiscordWebSocket:
             log.info('Shard ID %s has successfully RESUMED session %s under trace %s.',
                      self.shard_id, self.session_id, ', '.join(trace))
 
+        elif event == 'INTERACTION_CREATE':
+            # Handle interactions
+            # data: {'version': 1, 'type': 2, 'token': 'asd....', 'member': 
+            #    {'user': {'username': 'yuigahamayui', 'public_flags': 128, 'id': '539881999926689829', 'discriminator': '7441', 
+            #    'avatar': 'f493550c33cd55aaa0819be4e9a988a6'}, 'roles': ['553483070687281163', ...], 'premium_since': None, 
+            #    'permissions': '1099511627775', 'pending': False, 'nick': 'yui', 'mute': False, 'joined_at': '2019-03-08T05:49:16.519000+00:00', 
+            #    'is_pending': False, 'deaf': False, 'avatar': None}, 'id': '905175574933307412', 'guild_id': '553454168631934977', 
+            #    'data': {'type': 3, 'target_id': '904892309668253698', 
+            #    'resolved': {'messages': {'904892309668253698': {'type': 0, 'tts': False, 'timestamp': '2021-11-02T00:38:58.711000+00:00', 
+            #    'pinned': False, 'mentions': [], 'mention_roles': [], 'mention_everyone': False, 'id': '904892309668253698', 'flags': 0, 'embeds': [], 
+            #    'edited_timestamp': None, 'content': 'Looks like it worked that time, what do you need me to do from there?', 'components': [], 
+            #    'channel_id': '593048383405555725', 'author': {'username': 'CyanideCocoa', 'public_flags': 512, 'id': '198461501894295552', 
+            #    'discriminator': '8380', 'avatar': '688f1f865dc4ae4cc4da18708efe326a'}, 'attachments': []}}}, 'name': 'modmail', 'id': '905174418647576586'}, 
+            #    'channel_id': '593048383405555725', 'application_id': '893906869184237588'}}
+            self._dispatch_interaction(data)
+
         data['event_name'] = event
 
         try:
             self._dispatch(event.lower(), data)
-        except:
+        except Exception as err:
             log.debug('Unknown event %s.', event)
+            log.debug(err)
         else:
             self._dispatch('any', data)
 
@@ -489,7 +509,7 @@ class DiscordWebSocket:
 
     async def send(self, data):
         await self._rate_limiter.block()
-        self._dispatch('socket_raw_send', data)
+        self._dispatch_raw('socket_raw_send', data)
         await self.socket.send_str(data)
 
     async def send_as_json(self, data):

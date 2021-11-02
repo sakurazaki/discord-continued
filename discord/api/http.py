@@ -441,9 +441,9 @@ class HTTPClient:
             payload["message_reference"] = message_reference
 
         # return await self.request(r, json=payload)
-        return await self.create_message(payload, channel_id)
+        return await self.create_message(channel_id=channel_id, payload=payload)
 
-    async def create_message(self, channel_id: int, *, payload: dict = dict()) -> dict:
+    async def create_message(self, channel_id: int, payload: dict = dict()) -> dict:
         """
         Send a message to the specified channel.
 
