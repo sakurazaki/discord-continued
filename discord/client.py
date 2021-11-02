@@ -403,7 +403,6 @@ class Client:
             self._handlers[event](app_context)
 
         listeners = self._listeners.get(event)
-        print(listeners, event)
         if listeners:
             removed = []
             for i, (future, condition) in enumerate(listeners):

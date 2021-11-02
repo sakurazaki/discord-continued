@@ -33,7 +33,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.7",
     classifiers=[
-        "Development Status :: 1 - Beta",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Natural Language :: English",
