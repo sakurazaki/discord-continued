@@ -7,7 +7,7 @@ discord-continued
 [![PyPI Monthly Downloads](https://img.shields.io/pypi/dm/discord-continued.svg)](https://pypi.org/project/discord-continued/)
 [![PyPI version](https://img.shields.io/pypi/v/discord-continued.svg)](https://pypi.org/project/discord-continued/)
 [![License](https://img.shields.io/github/license/sakurazaki/discord-continued.svg)](https://github.com/sakurazaki/discord-continued/blob/master/LICENSE)
-[![Discord](https://discord.com/api/guilds/789032594456576001/embed.png)](https://discord.gg/R2FsdNn29A)
+[![Discord](https://discord.com/api/guilds/905226844851286048/embed.png)](https://discord.gg/R2FsdNn29A)
 
 
 Stable version for a Bot.
@@ -23,7 +23,7 @@ Installation
 
 Use this line to install our library:
 
-	`pip install -U discord-continued`
+	pip install -U discord-continued
 
 Examples
 ===========
@@ -44,7 +44,8 @@ class MyClient(discord.Client):
             await message.channel.send('pong')
 
 client = MyClient()
-client.run('token')```
+client.run('token')
+```
 
 ```python
 import discord
@@ -56,7 +57,8 @@ bot = commands.Bot(command_prefix='>')
 async def ping(ctx):
     await ctx.send('pong')
 
-bot.run('token')```
+bot.run('token')
+```
 
 
 Links
