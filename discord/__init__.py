@@ -15,10 +15,10 @@ __title__ = 'discord-continued'
 __author__ = 'sakurazaki'
 __license__ = 'MIT'
 __copyright__ = 'Copyright 2021-present sakurazaki'
-__version__ = '1.0.0'
+__version__ = '1.0.2'
 
 import logging
-__logger__ = logging.DEBUG
+__logger__ = logging.INFO
 
 from .api import *
 from .client import Client
@@ -30,22 +30,12 @@ from .models import *
 
 
 # from .appinfo import AppInfo
-# from .user import User, ClientUser, Profile
-# from .emoji import Emoji
-# from .partial_emoji import PartialEmoji
-# from .activity import *
-# from .channel import *
-# from .guild import Guild
-# from .flags import *
+
 # from .relationship import Relationship
-# from .member import Member, VoiceState
 # from .message import *
-# from .asset import Asset
 # from .calls import CallMessage, GroupCall
-# from .permissions import Permissions, PermissionOverwrite
 # from .role import Role, RoleTags
 # from .file import File
-# from .colour import Color, Colour
 # from .integrations import Integration, IntegrationAccount
 # from .invite import Invite, PartialInviteChannel, PartialInviteGuild
 # from .template import Template
@@ -53,8 +43,6 @@ from .models import *
 # from .object import Object
 # from .reaction import Reaction
 # from . import utils, opus, abc
-# from .enums import *
-# from .embeds import Embed
 # from .mentions import AllowedMentions
 # from .shard import AutoShardedClient, ShardInfo
 # from .player import *

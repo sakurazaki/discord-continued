@@ -1,7 +1,6 @@
 from .channel import *  # noqa: F401 F403
 from .gift import * # noqa: F401 F403
 from .guild import *  # noqa: F401 F403
-from .intents import *  # noqa: F401 F403
 from .integration import * # noqa: F401 F403
 from .member import *  # noqa: F401 F403
 from .message import *  # noqa: F401 F403

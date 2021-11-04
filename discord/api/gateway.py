@@ -18,11 +18,6 @@ from .enums import OpCodeType
 from ..enums import InteractionType
 from ..models.misc import InteractionData
 from ..exceptions import ConnectionClosed, InvalidArgument
-from .models.channel import Channel
-from .models.intents import Intents
-from .models.member import Member
-from .models.message import Message
-from .models.user import User
 from . import utils
 from .. import __logger__
 
@@ -180,7 +175,6 @@ class DiscordWebSocket:
     """
     A class representing a websocket connection with the gateway.
 
-    :ivar interactions.api.models.intents.Intents intents: An instance of :class:`interactions.api.models.Intents`.
     :ivar asyncio.AbstractEventLoop loop: The coroutine event loop established on.
     :ivar interactions.api.http.Request req: An instance of :class:`interactions.api.http.Request`.
     :ivar interactions.api.dispatch.Listener dispatch: An instance of :class:`interactions.api.dispatch.Listener`.
@@ -296,7 +290,7 @@ class DiscordWebSocket:
                 'compress': True,
                 'large_threshold': 250,
                 'v': 3,
-                'intents': self.intents
+                'intents': self.intents.value
             }
         }
 

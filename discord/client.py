@@ -8,12 +8,14 @@ from .api.cache import Cache, Item
 from .api.exceptions import *
 from .api.gateway import DiscordWebSocket, ReconnectWebSocket
 from .api.http import HTTPClient
-from .api.models.intents import Intents
 from .backoff import ExponentialBackoff
 from .enums import ApplicationCommandType
-from .models import ClientUser, ApplicationCommand, Option
+from .models import Intents
+from .models import ClientUser, Guild
+from .models import ApplicationCommand, Option
+from .exceptions import *
 
-from .context import InteractionContext
+from .context import Context, InteractionContext
 
 from . import __logger__
 
@@ -99,7 +101,7 @@ class Client:
         unsync_clock = options.pop('assume_unsync_clock', True)
         self.http = HTTPClient(connector, proxy=proxy, proxy_auth=proxy_auth, unsync_clock=unsync_clock, loop=self.loop)
 
-        self.intents = options.pop('intents', Intents.ALL)
+        self.intents = options.pop('intents', Intents.all())
 
         self._handlers = {
             'ready': self._handle_ready
@@ -275,7 +277,7 @@ class Client:
             self.user = ClientUser(client=self, data=self.user)
         # Get guilds too
         self.guilds = await self.http.get_self_guilds()
-        # TODO: Turn guilds into objects
+        self.guilds = [Guild(client=self, data=guild) for guild in self.guilds]
 
     async def start(self, *args, **kwargs):
         """|coro|
@@ -376,8 +378,6 @@ class Client:
 
         The default implementation sleeps for 5 seconds.
 
-        .. versionadded:: 1.4
-
         Parameters
         ------------
         shard_id: :class:`int`
@@ -400,7 +400,7 @@ class Client:
         log.debug(f"Im Handling ready and setting up {self._application_commands}")
         # Dispatch all pending application_commands
         for name, data in self._application_commands.items():
-            self._setup_application_command(name, self.user['id'], data)
+            self._setup_application_command(name, self.user.id, data)
         asyncio.create_task(self.synchronize_commands())
 
     def dispatch_raw(self, event, *args, **kwargs):
@@ -418,7 +418,7 @@ class Client:
 
         app_context = None
         if data:
-            app_context = InteractionContext(**data)
+            app_context = Context(**data)
 
         if event in self._handlers:
             self._handlers[event](app_context)
@@ -517,7 +517,7 @@ class Client:
 
         for guild in guilds:
             await asyncio.sleep(2)
-            commands = await self.http.get_application_command(self.user['id'], guild['id'])
+            commands = await self.http.get_application_command(self.user.id, guild['id'])
             
             change: list = []
 
@@ -529,7 +529,7 @@ class Client:
                 else:
                     await asyncio.sleep(3)
                     await self.http.delete_application_command(
-                        application_id=self.user['id'],
+                        application_id=self.user.id,
                         command_id=command["id"],
                         guild_id=command.get("guild_id"),
                     )
@@ -538,7 +538,7 @@ class Client:
                 log.debug(f"Updated command {command['id']}.")
                 await asyncio.sleep(3)
                 self.http.edit_application_command(
-                    application_id=self.user['id'],
+                    application_id=self.user.id,
                     data=command["data"],
                     command_id=command["id"],
                     guild_id=command.get("guild_id"),

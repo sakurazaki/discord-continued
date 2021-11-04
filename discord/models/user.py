@@ -71,7 +71,7 @@ class BaseUser:
         return '{0.name}#{0.discriminator}'.format(self)
 
     def __eq__(self, other):
-        return isinstance(other, _BaseUser) and other.id == self.id
+        return isinstance(other, BaseUser) and other.id == self.id
 
     def __ne__(self, other):
         return not self.__eq__(other)

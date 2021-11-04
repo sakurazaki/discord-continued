@@ -26,6 +26,10 @@ class Context(DictSerializerMixin):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
+    def __repr__(self) -> str:
+        attrs = [f'{key}={value}' for key, value in self.__dict__.items() if not key.startswith("_")]
+        return '<Context {}>'.format(" ".join(attrs))
+
 
 class InteractionContext(Context):
     """
