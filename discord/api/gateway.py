@@ -1,36 +1,32 @@
+# -*- coding: utf-8 -*-
+
+import aiohttp
 import asyncio
-from collections import namedtuple, deque
+from collections import namedtuple
 import concurrent.futures
 import logging
-import struct
 import sys
 import time
 import threading
 import traceback
 import zlib
 
-import aiohttp
-
-from random import random
 from typing import Any, Optional, Union
-
 from orjson import dumps, loads
 
-from ..base import Data
+from .enums import OpCodeType
 from ..enums import InteractionType
 from ..models.misc import InteractionData
-from .dispatch import Listener
-from .enums import OpCodeType
-from .error import GatewayException
-from .errors import ConnectionClosed, InvalidArgument
+from ..exceptions import ConnectionClosed, InvalidArgument
 from .models.channel import Channel
 from .models.intents import Intents
 from .models.member import Member
 from .models.message import Message
 from .models.user import User
 from . import utils
+from .. import __logger__
 
-logging.basicConfig(level=Data.LOGGER)
+logging.basicConfig(level=__logger__)
 log: logging.Logger = logging.getLogger("gateway")
 
 __all__ = (
@@ -243,6 +239,7 @@ class DiscordWebSocket:
         ws._rate_limiter.shard_id = shard_id
         ws.session_id = session
         ws.sequence = sequence
+        ws.intents = client.intents
 
         #client._connection._update_references(ws)
 
@@ -299,7 +296,7 @@ class DiscordWebSocket:
                 'compress': True,
                 'large_threshold': 250,
                 'v': 3,
-                'intents': Intents.ALL
+                'intents': self.intents
             }
         }
 
@@ -375,7 +372,6 @@ class DiscordWebSocket:
                 # send a heartbeat immediately
                 await self.send_as_json(self._keep_alive.get_payload())
                 self._keep_alive.start()
-                self._dispatch('ready')
                 return
 
             if op == OpCodeType.INVALIDATE_SESSION:

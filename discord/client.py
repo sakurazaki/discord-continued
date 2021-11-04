@@ -5,18 +5,17 @@ from logging import Logger, basicConfig, getLogger
 from typing import Any, Callable, Coroutine, List, Optional, Union, Dict
 
 from .api.cache import Cache, Item
-from .api.error import InteractionException, JSONException
-from .api.errors import *
+from .api.exceptions import *
 from .api.gateway import DiscordWebSocket, ReconnectWebSocket
 from .api.http import HTTPClient
-from .api.models.guild import Guild
 from .api.models.intents import Intents
-from .api.models.team import Application
-from .base import Data
 from .backoff import ExponentialBackoff
 from .enums import ApplicationCommandType
-from .models.command import ApplicationCommand, Option
+from .models import ClientUser, ApplicationCommand, Option
+
 from .context import InteractionContext
+
+from . import __logger__
 
 __all__ = (
     'Client',
@@ -25,7 +24,7 @@ __all__ = (
 # TODO: Find a better way to call on the cache
 cache = Cache()
 
-basicConfig(level=Data.LOGGER)
+basicConfig(level=__logger__)
 log: Logger = getLogger("client")
 
 
@@ -80,8 +79,11 @@ class Client:
     """
     A class representing the client connection to Discord's gateway and API via. WebSocket and HTTP.
 
-    :ivar DiscordWebSocket ws: The Websocket we connect to
     :ivar asyncio.AbstractEventLoop loop: The main overall asynchronous coroutine loop in effect.
+    :ivar discord.models.Intents intents: Intents to apply when logging.
+    :ivar str proxy: Proxy for http library.
+    :ivar str proxy_auth: Auth to login into proxy.
+    :ivar bool unsync_clock: Assume unsynced clock.
     """
 
     def __init__(self, *, loop: Optional[asyncio.AbstractEventLoop] = None, **options: Any,) -> None:
@@ -96,6 +98,8 @@ class Client:
         proxy_auth = options.pop('proxy_auth', None)
         unsync_clock = options.pop('assume_unsync_clock', True)
         self.http = HTTPClient(connector, proxy=proxy, proxy_auth=proxy_auth, unsync_clock=unsync_clock, loop=self.loop)
+
+        self.intents = options.pop('intents', Intents.ALL)
 
         self._handlers = {
             'ready': self._handle_ready
@@ -146,7 +150,7 @@ class Client:
         """
 
         log.info('logging in using static token')
-        self.me = await self.http.static_login(token.strip(), bot=bot)
+        self.user = await self.http.static_login(token.strip(), bot=bot)
 
     async def connect(self, *, reconnect=True):
         """|coro|
@@ -259,6 +263,20 @@ class Client:
         self._ready.clear()
         self.http.recreate()
 
+    async def get_self_info(self):
+        """|coro|
+
+        After connecting to client and socket fill information of user.
+
+        """
+
+        # Fill user info
+        if(self.user):
+            self.user = ClientUser(client=self, data=self.user)
+        # Get guilds too
+        self.guilds = await self.http.get_self_guilds()
+        # TODO: Turn guilds into objects
+
     async def start(self, *args, **kwargs):
         """|coro|
 
@@ -276,6 +294,9 @@ class Client:
             raise TypeError("unexpected keyword argument(s) %s" % list(kwargs.keys()))
 
         await self.login(*args, bot=bot)
+        await self.get_self_info()
+        self.dispatch('ready')
+        # .connect locks the execution, so anything you gotta do, before this line
         await self.connect(reconnect=reconnect)
 
     def run(self, *args, **kwargs):
@@ -374,12 +395,12 @@ class Client:
     async def _syncer(self, guilds):
         await self.ws.request_sync(guilds)
 
-    def _handle_ready(self, _):
+    def _handle_ready(self, event, data: dict = None):
         self._ready.set()
         log.debug(f"Im Handling ready and setting up {self._application_commands}")
         # Dispatch all pending application_commands
         for name, data in self._application_commands.items():
-            self._setup_application_command(name, self.me['id'], data)
+            self._setup_application_command(name, self.user['id'], data)
         asyncio.create_task(self.synchronize_commands())
 
     def dispatch_raw(self, event, *args, **kwargs):
@@ -496,7 +517,7 @@ class Client:
 
         for guild in guilds:
             await asyncio.sleep(2)
-            commands = await self.http.get_application_command(self.me['id'], guild['id'])
+            commands = await self.http.get_application_command(self.user['id'], guild['id'])
             
             change: list = []
 
@@ -508,7 +529,7 @@ class Client:
                 else:
                     await asyncio.sleep(3)
                     await self.http.delete_application_command(
-                        application_id=self.me['id'],
+                        application_id=self.user['id'],
                         command_id=command["id"],
                         guild_id=command.get("guild_id"),
                     )
@@ -517,7 +538,7 @@ class Client:
                 log.debug(f"Updated command {command['id']}.")
                 await asyncio.sleep(3)
                 self.http.edit_application_command(
-                    application_id=self.me['id'],
+                    application_id=self.user['id'],
                     data=command["data"],
                     command_id=command["id"],
                     guild_id=command.get("guild_id"),
@@ -558,7 +579,7 @@ class Client:
         type: Optional[Union[str, int, ApplicationCommandType]] = ApplicationCommandType.CHAT_INPUT,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        scope: Optional[Union[int, Guild, List[int], List[Guild]]] = None,
+        scope: Optional[Union[int, List[int]]] = None,
         options: Optional[List[Option]] = None,
         default_permission: Optional[bool] = None
     ) -> Callable[..., Any]:
@@ -613,9 +634,7 @@ class Client:
         _scope: list = []
 
         if isinstance(application_data.get("description"), list):
-            if all(isinstance(x, Guild) for x in scope):
-                _scope.append(guild.id for guild in scope)
-            elif all(isinstance(x, int) for x in scope):
+            if all(isinstance(x, int) for x in scope):
                 _scope.append(guild for guild in scope)
         else:
             _scope.append(application_data.get("scope"))

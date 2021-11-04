@@ -8,10 +8,13 @@ from typing import Any, Optional, Union, ClassVar, Tuple, List
 
 import aiohttp
 
-from .errors import HTTPException, Forbidden, NotFound, LoginFailure, DiscordServerError, GatewayNotFound
+from .exceptions import GatewayNotFound, HTTPException, Forbidden, NotFound, DiscordServerError
+from ..exceptions import LoginFailure
+
 from .gateway import DiscordClientWebSocketResponse
 from . import utils
-from ..base import Data, __version__
+from .. import __version__, __logger__
+
 from .models import (
     Channel,
     Embed,
@@ -29,7 +32,7 @@ from .models import (
     WelcomeScreen,
 )
 
-logging.basicConfig(level=Data.LOGGER)
+logging.basicConfig(level=__logger__)
 log: logging.Logger = logging.getLogger("http")
 
 __all__ = ("Route", "MaybeUnlock", "HTTPClient")
