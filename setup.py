@@ -7,10 +7,10 @@ from setuptools import find_packages, setup
 PACKAGE_NAME = "discord"
 HERE = path.abspath(path.dirname(__file__))
 
-with open("README.md", "r", encoding="UTF-8") as f:
+with open("pypi_readme.rst", "r", encoding="UTF-8") as f:
     README = f.read()
-with open(path.join(HERE, PACKAGE_NAME, "base.py"), encoding="utf-8") as fp:
-    VERSION = re.search('__version__ = "([^"]+)"', fp.read()).group(1)
+with open(path.join(HERE, PACKAGE_NAME, "__init__.py"), encoding="utf-8") as fp:
+    VERSION = re.search("__version__ = '(.+)'", fp.read()).group(1)
 
 extras = {
     "lint": ["black", "flake8", "isort"],

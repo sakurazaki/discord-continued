@@ -53,3 +53,4 @@ venv/
 .token
 start.bat
 git_push.bat
+build.bat
