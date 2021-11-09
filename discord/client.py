@@ -276,8 +276,14 @@ class Client:
         if(self.user):
             self.user = ClientUser(client=self, data=self.user)
         # Get guilds too
-        self.guilds = await self.http.get_self_guilds()
-        self.guilds = [Guild(client=self, data=guild) for guild in self.guilds]
+        self.guilds = list()
+        temp_guilds = await self.http.get_self_guilds()
+        for guild in temp_guilds:
+            full_guild = await self.http.get_guild(guild['id'])
+            self.guilds.append(Guild(client=self, data=full_guild))
+            await asyncio.sleep(1) # wait just a second to make sure we dont destroy the request rate limit per second
+            # this waiting may be specially bad if a bot is in more than a few servers and if so I suggest
+            # moving this functionality to a separate task where to build the internal cache.
 
     async def start(self, *args, **kwargs):
         """|coro|

@@ -9,6 +9,7 @@ from .colour import Colour
 from .user import User
 from .asset import Asset
 from .member import Member
+from .role import Role
 
 __all__ = (
     'BasicGuild',
@@ -34,5 +35,12 @@ class Guild:
         if data.get("members"):
             data['members'] = [Member(data=val, guild=data['id'], client=self._client) for val in data['members']]
 
+        if data.get("roles"):
+            data['roles'] = [Role(guild=self, data=role, client=self._client) for role in data['roles']]
+
         for key, value in data.items():
             setattr(self, key, value)
+
+    def __repr__(self) -> str:
+        attrs = [f'{key}={value}' for key, value in self.__dict__.items() if (not key.startswith("_") and key != 'emojis')]
+        return '<Guild {}>'.format(" ".join(attrs))
