@@ -628,7 +628,7 @@ class Client:
             # We need to verify whether the bot is logged in or not.
             if self.is_ready():
                 # Just setup the command
-                _setup_application_command(name, self.user.id, application_data)
+                self._setup_application_command(name, self.user.id, application_data)
 
             else:
                 # We delegate the command to after the bot is logged in
@@ -677,9 +677,11 @@ class Client:
         command_id = request['id']
 
         if len(permissions) > 0:
-            request = await self.http.edit_application_command_permissions(
-                application_id=application_id, guild_id=guild, command_id=command_id, data=permissions
-            )
+                data = {"permissions": permissions}
+
+                request = await self.http.edit_application_command_permissions(
+                    application_id=application_id, guild_id=guild, command_id=command_id, data=data
+                )
 
     async def raw_socket_create(self, data: dict) -> None:
         # TODO: doctype what this does
