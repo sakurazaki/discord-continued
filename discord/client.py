@@ -587,7 +587,8 @@ class Client:
         description: Optional[str] = None,
         scope: Optional[Union[int, List[int]]] = None,
         options: Optional[List[Option]] = None,
-        default_permission: Optional[bool] = None
+        default_permission: Optional[bool] = None,
+        permissions: Optional[List[str]] = None
     ) -> Callable[..., Any]:
         """
         A decorator for registering an application command to the Discord API,
@@ -619,14 +620,22 @@ class Client:
             if not asyncio.iscoroutinefunction(coro):
                 raise TypeError('event registered must be a coroutine function')
 
-            # What we're going to do here is take the function and push it back until we're logged in.
-            # Once we're logged in we get all bot information and register the functions.
-
+            # Store the function in the bot
             setattr(self, f"{name}_{type}", coro)
-            self._application_commands[f"{name}_{type}"] = \
-            {'type': type, 'name': name, 'description': description, 'scope': scope, 
-                'options': options, 'default_permission': default_permission}
-            log.debug('%s has successfully been registered as an application command', coro.__name__)
+            application_data = {'type': type, 'name': name, 'description': description, 'scope': scope, 
+                    'options': options, 'default_permission': default_permission, 'permissions': permissions}
+
+            # We need to verify whether the bot is logged in or not.
+            if self.is_ready():
+                # Just setup the command
+                _setup_application_command(name, self.user.id, application_data)
+
+            else:
+                # We delegate the command to after the bot is logged in
+                self._application_commands[f"{name}_{type}"] = application_data
+                
+            log.debug('%s has successfully been queued as an application command', coro.__name__)
+
             return coro
 
         return decorator
@@ -636,7 +645,7 @@ class Client:
         _description: str = "" if application_data.get("description") is None else application_data["description"]
         _options: list = [] if application_data.get("options") is None else application_data["options"]
         _default_permission: bool = True if application_data.get("default_permission") is None else application_data["default_permission"]
-        # _permissions: list = [] if permissions is None else permissions
+        _permissions: list = [] if application_data['permissions'] is None else application_data['permissions']
         _scope: list = []
 
         if isinstance(application_data.get("description"), list):
@@ -644,6 +653,10 @@ class Client:
                 _scope.append(guild for guild in scope)
         else:
             _scope.append(application_data.get("scope"))
+
+        # Double check just so users don't fuck up
+        if len(_permissions) > 0:
+            _default_permission = False
 
         for guild in _scope:
             payload: ApplicationCommand = ApplicationCommand(
@@ -654,11 +667,19 @@ class Client:
                 default_permission=_default_permission,
             )
 
-            request = self.http.create_application_command(
-                application_id=application_id, data=payload._json, guild_id=guild
-            )
+            asyncio.create_task(self._register_application_command_and_permissions(application_id, guild, payload, _permissions))
 
-            asyncio.create_task(request)
+    async def _register_application_command_and_permissions(self, application_id, guild, payload, permissions):
+        request = await self.http.create_application_command(
+            application_id=application_id, data=payload._json, guild_id=guild
+        )
+
+        command_id = request['id']
+
+        if len(permissions) > 0:
+            request = await self.http.edit_application_command_permissions(
+                application_id=application_id, guild_id=guild, command_id=command_id, data=permissions
+            )
 
     async def raw_socket_create(self, data: dict) -> None:
         # TODO: doctype what this does
