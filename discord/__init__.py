@@ -15,7 +15,7 @@ __title__ = 'discord-continued'
 __author__ = 'sakurazaki'
 __license__ = 'MIT'
 __copyright__ = 'Copyright 2021-present sakurazaki'
-__version__ = '1.0.4'
+__version__ = '1.0.6'
 
 import logging
 __logger__ = logging.INFO

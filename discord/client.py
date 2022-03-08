@@ -466,13 +466,15 @@ class Client:
     def dispatch_interaction(self, data):
         app_context = InteractionContext(**data)
 
-        # here we have to handle 2 different type of interactions
+        # here we have to handle 3 different type of interactions
         # default interactions have a "name"
         # custom interactions such as Components have a "custom_id" instead
+        # however custom components may have nested components
+        # therefore for custom components always just use name and _component
 
-        if(app_context.data.get("custom_id")):
-            # Fire a coro for a button type interaction
-            coro = getattr(self, f"{app_context.data['custom_id']}_{app_context.data['component_type']}", None)
+        if app_context.data.get("custom_id"):
+            # Fire a coro for a component type interaction
+            coro = getattr(self, f"{app_context.data['custom_id']}_component", None)
 
         else:
             # Fire a coro for a regular interaction
@@ -697,7 +699,6 @@ class Client:
     def component(
         self,
         *,
-        type: int = 2,
         name: Optional[str] = None,
     ) -> Callable[..., Any]:
         """
@@ -712,7 +713,7 @@ class Client:
                 raise TypeError('event registered must be a coroutine function')
 
             # Store the function in the bot
-            setattr(self, f"{name}_{type}", coro)
+            setattr(self, f"{name}_component", coro)
                 
             log.debug('%s has successfully been queued as an application component callback', coro.__name__)
 
