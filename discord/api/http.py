@@ -418,6 +418,7 @@ class HTTPClient:
         nonce: Union[int, str] = None,
         allowed_mentions=None,  # don't know type
         message_reference: Optional[Message] = None,
+        components: Optional[list] = None,
     ):
         """
         A higher level implementation of :meth:`create_message()` that handles the payload dict internally.
@@ -442,6 +443,9 @@ class HTTPClient:
 
         if message_reference:
             payload["message_reference"] = message_reference
+
+        if components:
+            payload["components"] = components
 
         # return await self.request(r, json=payload)
         return await self.create_message(channel_id=channel_id, payload=payload)

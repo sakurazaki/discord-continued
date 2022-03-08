@@ -1,8 +1,6 @@
 # from io import FileIO
 from typing import List, Optional, Union
 
-import interactions.client
-
 from .api.http import HTTPClient
 from .api.models.message import Embed, Message, MessageInteraction, MessageReference
 from .api.models.misc import DictSerializerMixin
