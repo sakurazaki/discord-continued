@@ -466,7 +466,18 @@ class Client:
     def dispatch_interaction(self, data):
         app_context = InteractionContext(**data)
 
-        coro = getattr(self, f"{app_context.data['name']}_{app_context.data['type']}", None)
+        # here we have to handle 2 different type of interactions
+        # default interactions have a "name"
+        # custom interactions such as Components have a "custom_id" instead
+
+        if(app_context.data.get("custom_id")):
+            # Fire a coro for a button type interaction
+            coro = getattr(self, f"{app_context.data['custom_id']}_{app_context.data['component_type']}", None)
+
+        else:
+            # Fire a coro for a regular interaction
+            coro = getattr(self, f"{app_context.data['name']}_{app_context.data['type']}", None)
+
         if coro:
             asyncio.create_task(coro(app_context))
 
@@ -682,6 +693,32 @@ class Client:
                 request = await self.http.edit_application_command_permissions(
                     application_id=application_id, guild_id=guild, command_id=command_id, data=data
                 )
+
+    def component(
+        self,
+        *,
+        type: int = 2,
+        name: Optional[str] = None,
+    ) -> Callable[..., Any]:
+        """
+        A decorator for registering an application components callback from the Discord API
+        """
+
+        if not name:
+            raise Exception("Command must have a name!")
+
+        def decorator(coro: Coroutine):
+            if not asyncio.iscoroutinefunction(coro):
+                raise TypeError('event registered must be a coroutine function')
+
+            # Store the function in the bot
+            setattr(self, f"{name}_{type}", coro)
+                
+            log.debug('%s has successfully been queued as an application component callback', coro.__name__)
+
+            return coro
+
+        return decorator
 
     async def raw_socket_create(self, data: dict) -> None:
         # TODO: doctype what this does
