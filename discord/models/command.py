@@ -102,7 +102,7 @@ class ApplicationCommand(DictSerializerMixin):
     :ivar str name: The name of the application command.
     :ivar typing.Optional[str] description: The description of the application command.
     :ivar typing.Optional[typing.List[interactions.models.Option]] options: The "options"/arguments of the application command.
-    :ivar typing.Optional[bool] default_permission: The default permission accessibility state of the application command.
+    :ivar typing.Optional[str] default_member_permissions: The default permission accessibility state of the application command.
     :ivar int version: The Application Command version autoincrement identifier.
     """
 
@@ -115,7 +115,7 @@ class ApplicationCommand(DictSerializerMixin):
         "name",
         "description",
         "options",
-        "default_permission",
+        "default_member_permissions",
         "permissions",
         "version",
     )
@@ -127,7 +127,7 @@ class ApplicationCommand(DictSerializerMixin):
     name: str
     description: Optional[str]
     options: Optional[List[Option]]
-    default_permission: Optional[bool]
+    default_member_permissions: Optional[str]
     permissions: Optional[List[Permission]]
     version: int  # Not sure if we need this.
 

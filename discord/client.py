@@ -600,7 +600,7 @@ class Client:
         description: Optional[str] = None,
         scope: Optional[Union[int, List[int]]] = None,
         options: Optional[List[Option]] = None,
-        default_permission: Optional[str] = str(1 << 11) # 1 << 11 is SEND_MESSAGES permission.
+        default_member_permissions: Optional[str] = str(1 << 11) # 1 << 11 is SEND_MESSAGES permission.
     ) -> Callable[..., Any]:
         """
         A decorator for registering an application command to the Discord API,
@@ -617,8 +617,8 @@ class Client:
         :type scope: typing.Optional[typing.Union[int, interactions.api.models.guild.Guild, typing.List[int], typing.List[interactions.api.models.guild.Guild]]]
         :param options: The "arguments"/options of an application command. This should bel eft blank if you are not using ``CHAT_INPUT``.
         :type options: typing.Optional[typing.List[interactions.models.command.Option]]
-        :param default_permission: The default permission of accessibility for the application command. Defaults to ``True``.
-        :type default_permission: typing.Optional[str]
+        :param default_member_permissions: The default permission of accessibility for members to use the application command. Defaults to ``1 << 11``.
+        :type default_member_permissions: typing.Optional[str]
         :return: typing.Callable[..., typing.Any]
         """
 
@@ -635,7 +635,7 @@ class Client:
             # Store the function in the bot
             setattr(self, f"{name}_{type}", coro)
             application_data = {'type': type, 'name': name, 'description': description, 'scope': scope, 
-                    'options': options, 'default_permission': default_permission}
+                    'options': options, 'default_member_permissions': default_member_permissions}
 
             # We need to verify whether the bot is logged in or not.
             if self.is_ready():
@@ -656,7 +656,7 @@ class Client:
         _type: int = application_data["type"].value if isinstance(application_data["type"], ApplicationCommandType) else application_data["type"]
         _description: str = "" if application_data.get("description") is None else application_data["description"]
         _options: list = [] if application_data.get("options") is None else application_data["options"]
-        _default_permission: str = str(1 << 11) if application_data.get("default_permission") is None else application_data["default_permission"]
+        _default_member_permissions: str = str(1 << 11) if application_data.get("default_member_permissions") is None else application_data["default_member_permissions"]
         _scope: list = []
 
         if isinstance(application_data.get("description"), list):
@@ -671,7 +671,7 @@ class Client:
                 name=application_data['name'],
                 description=_description,
                 options=_options,
-                default_permission=_default_permission,
+                default_member_permissions=_default_member_permissions,
             )
 
             asyncio.create_task(self._register_application_command_and_permissions(application_id, guild, payload))
